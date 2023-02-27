@@ -1,31 +1,31 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.7.6;
 
-import './interfaces/IUniswapV3Pool.sol';
+import './v3-core/interfaces/IUniswapV3Pool.sol';
 
 import './NoDelegateCall.sol';
 
-import './libraries/LowGasSafeMath.sol';
-import './libraries/SafeCast.sol';
-import './libraries/Tick.sol';
-import './libraries/TickBitmap.sol';
-import './libraries/Position.sol';
-import './libraries/Oracle.sol';
+import './v3-core/libraries/LowGasSafeMath.sol';
+import './v3-core/libraries/SafeCast.sol';
+import './v3-core/libraries/Tick.sol';
+import './v3-core/libraries/TickBitmap.sol';
+import './v3-core/libraries/Position.sol';
+import './v3-core/libraries/Oracle.sol';
 
-import './libraries/FullMath.sol';
-import './libraries/FixedPoint128.sol';
-import './libraries/TransferHelper.sol';
-import './libraries/TickMath.sol';
-import './libraries/LiquidityMath.sol';
-import './libraries/SqrtPriceMath.sol';
-import './libraries/SwapMath.sol';
+import './v3-core/libraries/FullMath.sol';
+import './v3-core/libraries/FixedPoint128.sol';
+import './v3-core/libraries/TransferHelper.sol';
+import './v3-core/libraries/TickMath.sol';
+import './v3-core/libraries/LiquidityMath.sol';
+import './v3-core/libraries/SqrtPriceMath.sol';
+import './v3-core/libraries/SwapMath.sol';
 
-import './interfaces/IUniswapV3PoolDeployer.sol';
-import './interfaces/IUniswapV3Factory.sol';
-import './interfaces/IERC20Minimal.sol';
-import './interfaces/callback/IUniswapV3MintCallback.sol';
-import './interfaces/callback/IUniswapV3SwapCallback.sol';
-import './interfaces/callback/IUniswapV3FlashCallback.sol';
+import './v3-core/interfaces/IUniswapV3PoolDeployer.sol';
+import './v3-core/interfaces/IUniswapV3Factory.sol';
+import './v3-core/interfaces/IERC20Minimal.sol';
+import './v3-core/interfaces/callback/IUniswapV3MintCallback.sol';
+import './v3-core/interfaces/callback/IUniswapV3SwapCallback.sol';
+import './v3-core/interfaces/callback/IUniswapV3FlashCallback.sol';
 
 contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     using LowGasSafeMath for uint256;
