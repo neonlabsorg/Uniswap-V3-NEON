@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import { BigNumber, BigNumberish } from 'ethers'
 import bn from 'bignumber.js'
 
+
 require('dotenv').config();
 export enum FeeAmount {
   LOW = 500,
@@ -28,6 +29,7 @@ async function fixture() {
   const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
   const UniswapRouter = await ethers.getContractFactory("SwapRouter");
   const Pool = await ethers.getContractFactory("UniswapV3Pool");
+  //const NPM = await ethers.getContractFactory("NonfungiblePositionManager");
   console.log("Deploy tokenA")
   const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await ERC20.deploy(fromEther('10000'))
   await tokenA.deployTransaction.wait(1)
@@ -65,6 +67,8 @@ async function fixture() {
   const createdPool = await factoryV3.createPool(tokenA.address, tokenB.address, FeeAmount.LOW)
   await createdPool.wait(1)
 
+
+
   console.log("Deploy createPool2")
   const createdPool2 = await factoryV3.createPool(tokenB.address, tokenC.address, FeeAmount.LOW)
   await createdPool2.wait(1)
@@ -76,14 +80,22 @@ async function fixture() {
   console.log("Pool 1 address ", poolAddress)
   console.log("Pool 2 address ", pairAddress2)
 
+
+
+
   console.log("Attach pool: ", poolAddress)
+  //add 5000 sleep
+  await delay(5000);
   const pool = await Pool.attach(poolAddress)
   const startingPrice = encodePriceSqrt(1, 2)
 
-  pool.connect(deployer).initialize(startingPrice);
+  const tx = await pool.connect(deployer).initialize(startingPrice);
+  tx.wait(1)
+
   console.log("Attach pool: ", pairAddress2)
   const pool2 = await Pool.attach(pairAddress2)
   pool2.connect(deployer).initialize(startingPrice);
+
   return {router: router, pool: pool, pool2: pool2};
 }
 
@@ -167,6 +179,24 @@ async function main() {
   await tx.wait(1)
 
 
+
+  console.log("Add liquidity")
+  const getMinTick = (tickSpacing: number) => Math.ceil(-887272 / tickSpacing) * tickSpacing
+  const getMaxTick = (tickSpacing: number) => Math.floor(887272 / tickSpacing) * tickSpacing
+  const TICK_SPACINGS: { [amount in FeeAmount]: number } = {
+    [FeeAmount.LOW]: 10,
+    [FeeAmount.MEDIUM]: 60,
+    [FeeAmount.HIGH]: 200,
+  }
+  const calleeFactory = await ethers.getContractFactory('contracts/v3-core/test/TestUniswapV3Callee.sol:TestUniswapV3Callee')
+  const callee = await calleeFactory.deploy()
+  await callee.deployed()
+  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),  fromEther('100'))
+
+  //tx = await pool.connect(LP).mint(LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), fromEther('10'), beneficiary.address)
+  await tx.wait(1)
+
+
   //console.log("LP current balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)), "    LP token:", toEther(await pair.balanceOf(LP.address)))
   console.log("LP current balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
   //console.log("Pair total supply:", toEther(await pool.totalSupply()))
@@ -218,15 +248,15 @@ async function main() {
   console.log("\nSwap 1");
   console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
   console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
-  // const swapReceipt = await tx.wait(1)
+  tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
+  const swapReceipt = await tx.wait(1)
 
-  // report["actions"].push({
-  //   "name": "Direct swap",
-  //   "usedGas": swapReceipt["gasUsed"].toString(),
-  //   "gasPrice": gasPrice.toString(),
-  //   "tx": swapReceipt["transactionHash"]
-  // });
+  report["actions"].push({
+    "name": "Direct swap",
+    "usedGas": swapReceipt["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": swapReceipt["transactionHash"]
+  });
 
   // console.log("\nSwap 2");
   // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
