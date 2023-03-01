@@ -27,9 +27,12 @@ async function fixture() {
 
   const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
   const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
+  console.log("UniswaV3Factory address: ", UniswapV3Factory.address)
+
   const UniswapRouter = await ethers.getContractFactory("SwapRouter");
+  console.log("SwapRouter address: ", UniswapRouter.address)
   const Pool = await ethers.getContractFactory("UniswapV3Pool");
-  //const NPM = await ethers.getContractFactory("NonfungiblePositionManager");
+  console.log("UniswapV3Pool address: ", Pool.address)
   console.log("Deploy tokenA")
   const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await ERC20.deploy(fromEther('10000'))
   await tokenA.deployTransaction.wait(1)
@@ -49,9 +52,6 @@ async function fixture() {
   const WETH = await ERC20.deploy(fromEther('10000'))
   await WETH.deployTransaction.wait(1)
 
-  //// console.log("Deploy WETHPartner")
-  //// const WETHPartner = await ERC20.deploy(fromEther('10000'))
-  //// await WETHPartner.deployTransaction.wait(1)
 
   console.log("Deploy factoryV3")
   const factoryV3 = await UniswapV3Factory.deploy()
@@ -68,7 +68,6 @@ async function fixture() {
   await createdPool.wait(1)
 
 
-
   console.log("Deploy createPool2")
   const createdPool2 = await factoryV3.createPool(tokenB.address, tokenC.address, FeeAmount.LOW)
   await createdPool2.wait(1)
@@ -76,15 +75,14 @@ async function fixture() {
   console.log("Get Pool")
   const poolAddress = await factoryV3.getPool(tokenA.address, tokenB.address, FeeAmount.LOW)
   console.log("Get Pool")
-  const pairAddress2 = await factoryV3.getPool(tokenB.address, tokenC.address, FeeAmount.LOW)
+  const poolAddress2 = await factoryV3.getPool(tokenB.address, tokenC.address, FeeAmount.LOW)
   console.log("Pool 1 address ", poolAddress)
-  console.log("Pool 2 address ", pairAddress2)
+  console.log("Pool 2 address ", poolAddress2)
 
 
 
 
   console.log("Attach pool: ", poolAddress)
-  //add 5000 sleep
   await delay(5000);
   const pool = await Pool.attach(poolAddress)
   const startingPrice = encodePriceSqrt(1, 2)
@@ -92,8 +90,8 @@ async function fixture() {
   const tx = await pool.connect(deployer).initialize(startingPrice);
   tx.wait(1)
 
-  console.log("Attach pool: ", pairAddress2)
-  const pool2 = await Pool.attach(pairAddress2)
+  console.log("Attach pool: ", poolAddress2)
+  const pool2 = await Pool.attach(poolAddress2)
   pool2.connect(deployer).initialize(startingPrice);
 
   return {router: router, pool: pool, pool2: pool2};
@@ -141,9 +139,7 @@ async function main() {
   let token2;
 
   await delay(5000);
-  console.log("test");
   const token2_0 = await ERC20.attach(await pool2.token0());
-  console.log("test2");
   await delay(5000);
   const token2_1 = await ERC20.attach(await pool2.token1());
 
@@ -166,9 +162,6 @@ async function main() {
   await tx.wait(1)
 
   console.log("LP initial balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)), "   token2:", toEther(await token2.balanceOf(LP.address)))
-  //console.log("LP token 0 :", toEther(await pool.balance0()))
-  //console.log("LP token 1 :", toEther(await pool.balance1()))
-  //console.log("Pair total supply:", toEther(await pool.totalSupply()))
 
   console.log("Approve all tokens for LP user");
   tx = await token0.connect(LP).approve(router.address, MaxUint256)
@@ -191,15 +184,15 @@ async function main() {
   const calleeFactory = await ethers.getContractFactory('contracts/v3-core/test/TestUniswapV3Callee.sol:TestUniswapV3Callee')
   const callee = await calleeFactory.deploy()
   await callee.deployed()
-  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),  fromEther('100'))
-
-  //tx = await pool.connect(LP).mint(LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), fromEther('10'), beneficiary.address)
+  tx = await token0.approve(callee.address, MaxUint256)
+  await tx.wait(1)
+  tx = await token1.approve(callee.address, MaxUint256)
   await tx.wait(1)
 
+  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),  fromEther('100'))
+  await tx.wait(1)
 
-  //console.log("LP current balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)), "    LP token:", toEther(await pair.balanceOf(LP.address)))
   console.log("LP current balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
-  //console.log("Pair total supply:", toEther(await pool.totalSupply()))
 
   tx = await token0.transfer(user.address, fromEther('10'))
   console.log(`Transfer 1 ${tx.hash}`);
@@ -229,7 +222,6 @@ async function main() {
   let swapAmount = fromEther('1')
   let outputAmount = fromEther('1')
   console.log("\nUser performs swaps token0 -> token1 in the pool with swap amount 1 ether using router.swapExactTokensForTokens()\n");
- // tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
 
   const params = {
     tokenIn: token1.address,
@@ -248,8 +240,9 @@ async function main() {
   console.log("\nSwap 1");
   console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
   console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
+  tx = await router.connect(user).exactInputSingle(params)
   const swapReceipt = await tx.wait(1)
+  console.log("Swap tx hash:", tx.hash)
 
   report["actions"].push({
     "name": "Direct swap",
@@ -258,66 +251,90 @@ async function main() {
     "tx": swapReceipt["transactionHash"]
   });
 
-  // console.log("\nSwap 2");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 3");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 4");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapExactTokensForTokens(swapAmount, 0, [token0.address, token1.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 5");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("\nSwap 2");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactInputSingle(params)
+  await tx.wait(1)
+  console.log("Swap tx hash:", tx.hash)
+
+  console.log("\nSwap 3");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactInputSingle(params)
+  await tx.wait(1)
+  console.log("Swap tx hash:", tx.hash)
+
+  console.log("\nSwap 4");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactInputSingle(params)
+  await tx.wait(1)
+  console.log("\nSwap 5");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
 
 
-  // console.log("\nUser performs swaps token1 -> token0 in the pool with output amount 1 ether using router.swapTokensForExactTokens()")
-  // tx = await router.connect(user).swapTokensForExactTokens(outputAmount, MaxUint256, [token1.address, token0.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 1");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapTokensForExactTokens(outputAmount, MaxUint256, [token1.address, token0.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 2");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapTokensForExactTokens(outputAmount, MaxUint256, [token1.address, token0.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 3");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapTokensForExactTokens(outputAmount, MaxUint256, [token1.address, token0.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 4");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  // tx = await router.connect(user).swapTokensForExactTokens(outputAmount, MaxUint256, [token1.address, token0.address], user.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("\nSwap 5");
-  // console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  // console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("\nUser performs swaps token1 -> token0 in the pool with output amount 1 ether using router.exactOutputSingle()")
+
+
+   const params_output = {
+    tokenIn: token1.address,
+    tokenOut: token0.address,
+    fee: FeeAmount.LOW,
+    sqrtPriceLimitX96: BigNumber.from('1461446703485210103287273052203988822378723970341'),
+    recipient: user.address,
+    deadline: MaxUint256,
+    amountOut: outputAmount,
+    amountInMaximum: MaxUint256,
+  };
+  tx = await router.connect(user).exactOutputSingle(params_output)
+  await tx.wait(1)
+  console.log("\nSwap 1");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactOutputSingle(params_output)
+  await tx.wait(1)
+  console.log("\nSwap 2");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactOutputSingle(params_output)
+  await tx.wait(1)
+  console.log("\nSwap 3");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactOutputSingle(params_output)
+  await tx.wait(1)
+  console.log("\nSwap 4");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  tx = await router.connect(user).exactOutputSingle(params_output)
+  await tx.wait(1)
+  console.log("\nSwap 5");
+  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
+  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
   
-  // console.log("\n\nLP transfers LP tokens to beneficiary");
-  // tx = await pool.connect(LP).transfer(beneficiary.address, await pool.balanceOf(LP.address))
-  // await tx.wait(1)
-  // console.log("LP current balances             token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)), "    LP token:", toEther(await pool.balanceOf(LP.address)))
-  // console.log("Beneficiary current balances    token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)), "    LP token:", toEther(await pool.balanceOf(beneficiary.address)))
-  // tx = await pool.connect(beneficiary).approve(router.address, MaxUint256)
-  // await tx.wait(1)
-  
-  // console.log("\nBeneficiary removes liquidity from the pool collecting rewards");
-  // tx = await router.connect(beneficiary).removeLiquidity(token0.address, token1.address, await pool.balanceOf(beneficiary.address), 0, 0, beneficiary.address, MaxUint256, overrides)
-  // await tx.wait(1)
-  // console.log("Beneficiary current balances    token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)), "    LP token:", toEther(await pool.balanceOf(beneficiary.address)))
-  // console.log("Pair total supply:", toEther(await pool.totalSupply()))
+  console.log("\n\nLP transfers LP tokens to beneficiary");
+
+  tx = await token0.approve(callee.address, MaxUint256)
+  await tx.wait(1)
+  tx = await token1.approve(callee.address, MaxUint256)
+  await tx.wait(1)
+
+  await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address),await token1.balanceOf(pool.address))
+  await tx.wait(1)
+  console.log("LP current balances             token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
+  console.log("Beneficiary current balances    token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
+
+  console.log("\nBeneficiary removes liquidity from the pool collecting rewards");
+
+
+  tx = await pool.connect(beneficiary).burn(getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(beneficiary.address))
+  await callee.connect(LP).burn(pool.address, beneficiary.address, await token0.balanceOf(pool.address),await token1.balanceOf(pool.address), MaxUint256, MaxUint256)
+
+  await tx.wait(1)
+  console.log("Beneficiary current balances    token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
+  console.log("Pair total supply:", toEther(await pool.totalSupply()))
 
   await fs.writeFile("report.json", JSON.stringify(report));
 
