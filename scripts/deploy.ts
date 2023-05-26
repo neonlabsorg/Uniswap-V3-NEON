@@ -317,27 +317,36 @@ async function main() {
   tx = await token1.approve(callee.address, MaxUint256)
   await tx.wait(1)
 
-  console.log("Beneficiary collecting rewards");
-  console.log("BEFORE COLLECT")
+  console.log("Starting collecting rewards for the Beneficiary");
+  console.log("Balances before collecting rewards")
   console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
   console.log("LP current balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
   console.log("Beneficiary current balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
 
-  await pool.connect(LP).burn(getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), 0)
+  tx = await pool.connect(LP).burn(getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), 0)
+  const burnTx = await tx.wait(1)
+
+  report["actions"].push({
+    "name": "Burn transaction",
+    "usedGas": burnTx["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": burnTx["transactionHash"]
+  });
+
   tx = await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address),await token1.balanceOf(pool.address))
   const collectTx = await tx.wait(1)
 
-  console.log("AFTER COLLECT")
-  console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
-  console.log("LP balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
-  console.log("Beneficiary balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
-
   report["actions"].push({
-    "name": "After collect",
+    "name": "Collect transaction",
     "usedGas": collectTx["gasUsed"].toString(),
     "gasPrice": gasPrice.toString(),
     "tx": collectTx["transactionHash"]
   });
+
+  console.log("Balances after collecting rewards")
+  console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
+  console.log("LP balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
+  console.log("Beneficiary balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
 
   await fs.writeFile("report.json", JSON.stringify(report));
 }
