@@ -1,10 +1,10 @@
-FROM node:14
+FROM node:18-alpine
 
 COPY . /usr/src/app
 
 WORKDIR /usr/src/app
 
-RUN yarn install --non-interactive --frozen-lockfile
+RUN npm ci
 
 COPY ./docker/entrypoint.sh /usr/local/bin
 
