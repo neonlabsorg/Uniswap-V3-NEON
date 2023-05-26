@@ -26,13 +26,7 @@ async function fixture() {
   let [deployer] = await ethers.getSigners();
 
   const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
-  const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
-  console.log("UniswaV3Factory address: ", UniswapV3Factory.address)
 
-  const UniswapRouter = await ethers.getContractFactory("SwapRouter");
-  console.log("SwapRouter address: ", UniswapRouter.address)
-  const Pool = await ethers.getContractFactory("UniswapV3Pool");
-  console.log("UniswapV3Pool address: ", Pool.address)
   console.log("Deploy tokenA")
   const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await ERC20.deploy(fromEther('10000'))
   await tokenA.deployTransaction.wait(1)
@@ -52,13 +46,14 @@ async function fixture() {
   const WETH = await ERC20.deploy(fromEther('10000'))
   await WETH.deployTransaction.wait(1)
 
-
   console.log("Deploy factoryV3")
+  const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
   const factoryV3 = await UniswapV3Factory.deploy()
   await factoryV3.deployTransaction.wait(1)
   console.log("FactoryV3 address: ", factoryV3.address)
 
   console.log("Deploy router")
+  const UniswapRouter = await ethers.getContractFactory("SwapRouter");
   const router = await UniswapRouter.deploy(factoryV3.address, WETH.address)
   await router.deployTransaction.wait(1)
   console.log("Router address: ", router.address)
@@ -67,20 +62,21 @@ async function fixture() {
   const createdPool = await factoryV3.createPool(tokenA.address, tokenB.address, FeeAmount.LOW)
   await createdPool.wait(1)
 
-
   console.log("Deploy createPool2")
   const createdPool2 = await factoryV3.createPool(tokenB.address, tokenC.address, FeeAmount.LOW)
   await createdPool2.wait(1)
 
   console.log("Get Pool")
   const poolAddress = await factoryV3.getPool(tokenA.address, tokenB.address, FeeAmount.LOW)
+  console.log("Pool 1 address ", poolAddress)
+  
   console.log("Get Pool")
   const poolAddress2 = await factoryV3.getPool(tokenB.address, tokenC.address, FeeAmount.LOW)
-  console.log("Pool 1 address ", poolAddress)
   console.log("Pool 2 address ", poolAddress2)
 
 
-
+  console.log("Deploy pool")
+  const Pool = await ethers.getContractFactory("UniswapV3Pool");
 
   console.log("Attach pool: ", poolAddress)
   await delay(5000);
@@ -114,7 +110,7 @@ export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish):
 
 async function main() {
   let report = {
-    "name": "Uniswap V2",
+    "name": "Uniswap V3",
     "actions": [] as ReportItem[]
   }
 
@@ -123,8 +119,8 @@ async function main() {
   let tx;
   const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
   console.log("Get ERC20")
+  console.log("GET LP, user and beneficiary")
   let [LP, user, beneficiary] = await ethers.getSigners();
-  console.log("GET LP user and beneficiary")
   let {router, pool, pool2} = await fixture();
   console.log("Get router ", router.address, pool.address)
   console.log("Token 0 ", await pool.token0())
@@ -321,23 +317,38 @@ async function main() {
   tx = await token1.approve(callee.address, MaxUint256)
   await tx.wait(1)
 
-  await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address),await token1.balanceOf(pool.address))
-  await tx.wait(1)
-  console.log("LP current balances             token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
-  console.log("Beneficiary current balances    token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
+  console.log("Starting collecting rewards for the Beneficiary");
+  console.log("Balances before collecting rewards")
+  console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
+  console.log("LP current balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
+  console.log("Beneficiary current balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
 
-  console.log("\nBeneficiary removes liquidity from the pool collecting rewards");
+  tx = await pool.connect(LP).burn(getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), 0)
+  const burnTx = await tx.wait(1)
 
+  report["actions"].push({
+    "name": "Burn transaction",
+    "usedGas": burnTx["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": burnTx["transactionHash"]
+  });
 
-  tx = await pool.connect(beneficiary).burn(getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(beneficiary.address))
-  await callee.connect(LP).burn(pool.address, beneficiary.address, await token0.balanceOf(pool.address),await token1.balanceOf(pool.address), MaxUint256, MaxUint256)
+  tx = await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address),await token1.balanceOf(pool.address))
+  const collectTx = await tx.wait(1)
 
-  await tx.wait(1)
-  console.log("Beneficiary current balances    token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
-  console.log("Pair total supply:", toEther(await pool.totalSupply()))
+  report["actions"].push({
+    "name": "Collect transaction",
+    "usedGas": collectTx["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": collectTx["transactionHash"]
+  });
+
+  console.log("Balances after collecting rewards")
+  console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
+  console.log("LP balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
+  console.log("Beneficiary balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
 
   await fs.writeFile("report.json", JSON.stringify(report));
-
 }
 
 // We recommend this pattern to be able to use async/await everywhere
