@@ -52,14 +52,14 @@
     "typescript": "^3.7.3"
   },
   "scripts": {
-    "compile": "hardhat compile",
+    "compile": "hardhat compile --concurrency 1",
+    "deploy": "hardhat run --no-compile ./scripts/deploy.ts",
     "test": "hardhat test"
   },
   "dependencies": {
     "@openzeppelin/contracts": "3.4.2-solc-0.7",
     "@uniswap/lib": "^4.0.1-alpha",
     "base64-sol": "1.0.1",
-    "dotenv": "^16.0.1",
-    "solc": "^0.7.6"
+    "dotenv": "^16.0.1"
   }
 }
