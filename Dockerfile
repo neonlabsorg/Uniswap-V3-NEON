@@ -23,7 +23,7 @@ RUN mkdir -p ${DOWNLOAD_PATH} && \
     wget -O ${DOWNLOAD_PATH}/list.json ${REPOSITORY_PATH}/list.json && \
     chmod -R 755 ${DOWNLOAD_PATH}
 
-# Add env stubs and compile Solana Artifacts
+# Add env stubs and compile Solidity Artifacts
 ENV NEON_PROXY_URL=https://a/ \
     NEON_ACCOUNTS=0x0000000000000000000000000000000000000000000000000000000000000000
 RUN ./docker/compile.sh
