@@ -1,5 +1,12 @@
-artifacts/
-cache/
-crytic-export/
-node_modules/
-typechain/
+node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+.idea
+report.json
+
+#Hardhat files
+cache
+artifacts
