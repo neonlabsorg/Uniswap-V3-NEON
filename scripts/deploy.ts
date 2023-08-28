@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import fs from "fs/promises";
-import { BigNumber, BigNumberish } from 'ethers'
+import {BigNumber, BigNumberish, utils} from 'ethers'
 import bn from 'bignumber.js'
 
 
@@ -44,12 +44,12 @@ async function fixture() {
 
   console.log("Deploy WETH")
   const WETH = await ERC20.deploy(fromEther('10000'))
-  await WETH.deployTransaction.wait(1)
+  await WETH.deployTransaction.wait(5)
 
   console.log("Deploy factoryV3")
   const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
   const factoryV3 = await UniswapV3Factory.deploy()
-  await factoryV3.deployTransaction.wait(1)
+  await factoryV3.deployTransaction.wait(5)
   console.log("FactoryV3 address: ", factoryV3.address)
 
   console.log("Deploy router")
@@ -90,7 +90,27 @@ async function fixture() {
   const pool2 = await Pool.attach(poolAddress2)
   pool2.connect(deployer).initialize(startingPrice);
 
-  return {router: router, pool: pool, pool2: pool2};
+  const NFTDescriptorFactory = await ethers.getContractFactory("NFTDescriptor");
+  const nftDescriptor = await NFTDescriptorFactory.deploy();
+  await nftDescriptor.deployTransaction.wait(1);
+  console.log("NFTDescriptor address: ", nftDescriptor.address);
+
+  const NonfungibleTokenPositionDescriptor = await ethers.getContractFactory("NonfungibleTokenPositionDescriptor",
+      {
+        libraries: {
+          NFTDescriptor: nftDescriptor.address,
+        }
+      });
+  const positionDescriptor = await NonfungibleTokenPositionDescriptor
+      .deploy(WETH.address, utils.keccak256(new TextEncoder().encode("ETH")));
+
+  const NonfungiblePositionManagerFactory = await ethers.getContractFactory("NonfungiblePositionManager");
+  const positionManager = await NonfungiblePositionManagerFactory
+      .deploy(factoryV3.address, WETH.address, positionDescriptor.address);
+  await positionManager.deployTransaction.wait(1);
+  console.log("NonfungiblePositionManager address: ", positionManager.address);
+
+  return {router: router, pool: pool, pool2: pool2, positionManager: positionManager};
 }
 
 type ReportItem = {[key: string]: string|number}
@@ -121,7 +141,7 @@ async function main() {
   console.log("Get ERC20")
   console.log("GET LP, user and beneficiary")
   let [LP, user, beneficiary] = await ethers.getSigners();
-  let {router, pool, pool2} = await fixture();
+  let {router, pool, pool2, positionManager} = await fixture();
   console.log("Get router ", router.address, pool.address)
   console.log("Token 0 ", await pool.token0())
   console.log("Attach token 0")
@@ -214,6 +234,36 @@ async function main() {
     "gasPrice": gasPrice.toString(),
     "tx": approveReceipt["transactionHash"]
   });
+
+  console.log("Mint a position via Non-fungible Position Manager")
+  const mintParams = {
+    token0: token0.address,
+    token1: token1.address,
+    fee: FeeAmount.LOW,
+    tickLower: getMinTick(TICK_SPACINGS[FeeAmount.LOW]),
+    tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),
+    amount0Desired: fromEther('10'),
+    amount1Desired: fromEther('10'),
+    amount0Min: 0,
+    amount1Min: 0,
+    recipient: LP.address,
+    deadline: MaxUint256,
+  };
+  const mintTx = await positionManager.connect(LP).mint(mintParams);
+  await mintTx.wait();
+
+  const mintReceipt = await mintTx.wait();
+
+  report["actions"].push({
+    "name": "Mint position",
+    "usedGas": mintReceipt["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": mintReceipt["transactionHash"]
+  });
+
+  // increase liquidity
+  // decrease liquidity
+  // collect fees
 
   let swapAmount = fromEther('1')
   let outputAmount = fromEther('1')
