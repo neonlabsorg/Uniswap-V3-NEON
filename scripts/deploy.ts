@@ -55,16 +55,16 @@ async function fixture() {
   console.log("Deploy router")
   const UniswapRouter = await ethers.getContractFactory("SwapRouter");
   const router = await UniswapRouter.deploy(factoryV3.address, WETH.address)
-  await router.deployTransaction.wait(1)
+  await router.deployTransaction.wait(5)
   console.log("Router address: ", router.address)
 
   console.log("Deploy createPool")
   const createdPool = await factoryV3.createPool(tokenA.address, tokenB.address, FeeAmount.LOW)
-  await createdPool.wait(1)
+  await createdPool.wait(5)
 
   console.log("Deploy createPool2")
   const createdPool2 = await factoryV3.createPool(tokenB.address, tokenC.address, FeeAmount.LOW)
-  await createdPool2.wait(1)
+  await createdPool2.wait(5)
 
   console.log("Get Pool")
   const poolAddress = await factoryV3.getPool(tokenA.address, tokenB.address, FeeAmount.LOW)
@@ -84,17 +84,20 @@ async function fixture() {
   const startingPrice = encodePriceSqrt(1, 2)
 
   const tx = await pool.connect(deployer).initialize(startingPrice);
-  tx.wait(1)
+  tx.wait(5)
 
   console.log("Attach pool: ", poolAddress2)
   const pool2 = await Pool.attach(poolAddress2)
-  pool2.connect(deployer).initialize(startingPrice);
+  const tx2 = await pool2.connect(deployer).initialize(startingPrice);
+  tx2.wait(5)
 
+  console.log("Deploy NftDescriptor")
   const NFTDescriptorFactory = await ethers.getContractFactory("NFTDescriptor");
   const nftDescriptor = await NFTDescriptorFactory.deploy();
-  await nftDescriptor.deployTransaction.wait(1);
+  await nftDescriptor.deployTransaction.wait(5);
   console.log("NFTDescriptor address: ", nftDescriptor.address);
 
+  console.log("Deploy NftPositionDescriptor")
   const NonfungibleTokenPositionDescriptor = await ethers.getContractFactory("NonfungibleTokenPositionDescriptor",
       {
         libraries: {
@@ -103,11 +106,14 @@ async function fixture() {
       });
   const positionDescriptor = await NonfungibleTokenPositionDescriptor
       .deploy(WETH.address, utils.keccak256(new TextEncoder().encode("ETH")));
+  await positionDescriptor.deployTransaction.wait(5);
+  console.log("PositionDescriptor address: ", positionDescriptor.address)
 
+  console.log("Deploy NftPositionManager")
   const NonfungiblePositionManagerFactory = await ethers.getContractFactory("NonfungiblePositionManager");
   const positionManager = await NonfungiblePositionManagerFactory
       .deploy(factoryV3.address, WETH.address, positionDescriptor.address);
-  await positionManager.deployTransaction.wait(1);
+  await positionManager.deployTransaction.wait(5);
   console.log("NonfungiblePositionManager address: ", positionManager.address);
 
   return {router: router, pool: pool, pool2: pool2, positionManager: positionManager};
@@ -187,9 +193,6 @@ async function main() {
   tx = await token2.connect(LP).approve(router.address, MaxUint256)
   await tx.wait(1)
 
-
-
-  console.log("Add liquidity")
   const getMinTick = (tickSpacing: number) => Math.ceil(-887272 / tickSpacing) * tickSpacing
   const getMaxTick = (tickSpacing: number) => Math.floor(887272 / tickSpacing) * tickSpacing
   const TICK_SPACINGS: { [amount in FeeAmount]: number } = {
@@ -197,6 +200,10 @@ async function main() {
     [FeeAmount.MEDIUM]: 60,
     [FeeAmount.HIGH]: 200,
   }
+
+
+
+  console.log("Add liquidity")
   const calleeFactory = await ethers.getContractFactory('contracts/v3-core/test/TestUniswapV3Callee.sol:TestUniswapV3Callee')
   const callee = await calleeFactory.deploy()
   await callee.deployed()
@@ -241,14 +248,19 @@ async function main() {
     token1: token1.address,
     fee: FeeAmount.LOW,
     tickLower: getMinTick(TICK_SPACINGS[FeeAmount.LOW]),
-    tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),
-    amount0Desired: fromEther('10'),
-    amount1Desired: fromEther('10'),
-    amount0Min: 0,
-    amount1Min: 0,
+    tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.HIGH]),
+    amount0Desired: fromEther("1"),
+    amount1Desired: fromEther("1"),
+    amount0Min: fromEther("0.1"),
+    amount1Min: fromEther("0.1"),
     recipient: LP.address,
     deadline: MaxUint256,
   };
+  console.log("Approve all tokens for LP user");
+  tx = await token0.connect(LP).approve(positionManager.address, mintParams.amount0Desired);
+  await tx.wait(1)
+  tx = await token1.connect(LP).approve(positionManager.address, mintParams.amount1Desired);
+  await tx.wait(1)
   const mintTx = await positionManager.connect(LP).mint(mintParams);
   await mintTx.wait();
 
@@ -264,6 +276,7 @@ async function main() {
   // increase liquidity
   // decrease liquidity
   // collect fees
+
 
   let swapAmount = fromEther('1')
   let outputAmount = fromEther('1')
