@@ -242,7 +242,7 @@ async function main() {
     "tx": approveReceipt["transactionHash"]
   });
 
-  console.log("Mint a position via Non-fungible Position Manager")
+  console.log("NonfungiblePositionManager - Mint a position")
   const mintParams = {
     token0: token0.address,
     token1: token1.address,
@@ -251,8 +251,8 @@ async function main() {
     tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.HIGH]),
     amount0Desired: fromEther("1"),
     amount1Desired: fromEther("1"),
-    amount0Min: fromEther("0.1"),
-    amount1Min: fromEther("0.1"),
+    amount0Min: 0,
+    amount1Min: 0,
     recipient: LP.address,
     deadline: MaxUint256,
   };
@@ -262,25 +262,87 @@ async function main() {
   tx = await token1.connect(LP).approve(positionManager.address, mintParams.amount1Desired);
   await tx.wait(1)
   const mintTx = await positionManager.connect(LP).mint(mintParams);
-  await mintTx.wait();
-
   const mintReceipt = await mintTx.wait();
-
+  const transferEvents = mintReceipt.events.filter((event: any) => event.event === "Transfer");
+  const tokenId = transferEvents[transferEvents.length - 1].args.tokenId;
+  console.log("NFT tokenId: ", tokenId)
   report["actions"].push({
-    "name": "Mint position",
+    "name": "NonfungiblePositionManager - Mint position",
     "usedGas": mintReceipt["gasUsed"].toString(),
     "gasPrice": gasPrice.toString(),
     "tx": mintReceipt["transactionHash"]
   });
 
-  // increase liquidity
-  // decrease liquidity
-  // collect fees
+  console.log("NonfungiblePositionManager - Increase Liquidity");
+  const increaseParams = {
+      tokenId: tokenId,
+      amount0Desired: fromEther("1"),
+      amount1Desired: fromEther("1"),
+      amount0Min: 0,
+      amount1Min: 0,
+      deadline: ethers.constants.MaxUint256,
+    };
+  console.log("Approve all tokens for LP user");
+  tx = await token0.connect(LP).approve(positionManager.address, mintParams.amount0Desired);
+  await tx.wait(1)
+  tx = await token1.connect(LP).approve(positionManager.address, mintParams.amount1Desired);
+  await tx.wait(1)
+  const increaseTx = await positionManager.connect(LP).increaseLiquidity(increaseParams);
+  const increaseReceipt = await increaseTx.wait();
 
+  let updatedLiquidity = await pool.liquidity();
+  console.log("Updated Liquidity: ", toEther(updatedLiquidity));
 
-  let swapAmount = fromEther('1')
-  let outputAmount = fromEther('1')
+  report["actions"].push({
+    "name": "NonfungiblePositionManager - Increase liquidity ",
+    "usedGas": increaseReceipt["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": increaseReceipt["transactionHash"]
+  });
+
+  console.log("NonfungiblePositionManager - Decrease Liquidity");
+  const decreaseParams = {
+      tokenId: tokenId,
+      liquidity: fromEther("1"),
+      amount0Min: 0,
+      amount1Min: 0,
+      deadline: ethers.constants.MaxUint256,
+    };
+
+  const decreaseTx = await positionManager.connect(LP).decreaseLiquidity(decreaseParams);
+  const decreaseReceipt = await decreaseTx.wait();
+
+  updatedLiquidity = await pool.liquidity();
+  console.log("Updated Liquidity: ", toEther(updatedLiquidity));
+
+  report["actions"].push({
+    "name": "NonfungiblePositionManager - Decrease Liquidity",
+    "usedGas": decreaseReceipt["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": decreaseReceipt["transactionHash"]
+  });
+
+  console.log("NonfungiblePositionManager - Collect fees");
+  const collectParams = {
+    recipient: positionManager.address,
+    tokenId: tokenId,
+    amount0Max: fromEther("10"),
+    amount1Max: fromEther("10"),
+  };
+  const collectFeesTx = await positionManager.connect(LP).collect(collectParams);
+  const collectReceipt = await collectFeesTx.wait();
+  console.log("Fees collected successfully!");
+
+  report["actions"].push({
+    "name": "NonfungiblePositionManager - Collect Fees",
+    "usedGas": collectReceipt["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": collectReceipt["transactionHash"]
+  });
+
   console.log("\nUser performs swaps token0 -> token1 in the pool with swap amount 1 ether using router.swapExactTokensForTokens()\n");
+  let swapAmount = fromEther("1")
+  let outputAmount = fromEther("1")
 
   const params = {
     tokenIn: token1.address,
