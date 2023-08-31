@@ -201,8 +201,6 @@ async function main() {
     [FeeAmount.HIGH]: 200,
   }
 
-
-
   console.log("Add liquidity")
   const calleeFactory = await ethers.getContractFactory('contracts/v3-core/test/TestUniswapV3Callee.sol:TestUniswapV3Callee')
   const callee = await calleeFactory.deploy()
@@ -301,9 +299,10 @@ async function main() {
   });
 
   console.log("NonfungiblePositionManager - Decrease Liquidity");
+  let positions = await positionManager.positions(tokenId);
   const decreaseParams = {
       tokenId: tokenId,
-      liquidity: fromEther("1"),
+      liquidity: positions.liquidity,
       amount0Min: 0,
       amount1Min: 0,
       deadline: ethers.constants.MaxUint256,
@@ -338,6 +337,18 @@ async function main() {
     "usedGas": collectReceipt["gasUsed"].toString(),
     "gasPrice": gasPrice.toString(),
     "tx": collectReceipt["transactionHash"]
+  });
+
+  console.log("Burn tokenId from NFT contract");
+  const pmBurnTx = await positionManager.connect(LP).burn(tokenId);
+  const burnReceipt = await pmBurnTx.wait();
+  console.log(`Liquidity position with tokenId ${tokenId} burned successfully!`);
+
+  report["actions"].push({
+    "name": "NonfungiblePositionManager - Burn Liquidity Position",
+    "usedGas": burnReceipt["gasUsed"].toString(),
+    "gasPrice": gasPrice.toString(),
+    "tx": burnReceipt["transactionHash"]
   });
 
   console.log("\nUser performs swaps token0 -> token1 in the pool with swap amount 1 ether using router.swapExactTokensForTokens()\n");
