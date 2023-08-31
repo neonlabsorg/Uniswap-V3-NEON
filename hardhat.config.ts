@@ -2,6 +2,7 @@ import 'hardhat-typechain'
 import '@nomiclabs/hardhat-ethers'
 import '@nomiclabs/hardhat-waffle'
 import '@nomiclabs/hardhat-etherscan'
+require('dotenv').config();
 const proxyUrl = process.env.NEON_PROXY_URL;
 // @ts-ignore
 const accounts = process.env.NEON_ACCOUNTS.split(",");
