@@ -84,12 +84,12 @@ async function fixture() {
   const startingPrice = encodePriceSqrt(1, 2)
 
   const tx = await pool.connect(deployer).initialize(startingPrice);
-  tx.wait(5)
+  await tx.wait(5)
 
   console.log("Attach pool: ", poolAddress2)
   const pool2 = await Pool.attach(poolAddress2)
   const tx2 = await pool2.connect(deployer).initialize(startingPrice);
-  tx2.wait(5)
+  await tx2.wait(5)
 
   console.log("Deploy NftDescriptor")
   const NFTDescriptorFactory = await ethers.getContractFactory("NFTDescriptor");
