@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "scripts/deploy.ts",
+            "program": "${workspaceFolder}/node_modules/.bin/hardhat",
+            "args": ["run", "scripts/deploy.ts"],
+            "envFile": "${workspaceFolder}/.env" // Make sure there's .env file in the proj root with NEON_ACCOUNTS, NEON_PROXY_URL, NEON_CHAIN_ID
+        }
+    ]
+}
