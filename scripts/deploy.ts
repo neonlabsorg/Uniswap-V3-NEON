@@ -1,8 +1,11 @@
-import { ethers } from "hardhat";
 import fs from "fs/promises";
+
+import { ethers } from "hardhat";
 import {BigNumber, BigNumberish, utils} from 'ethers'
 import bn from 'bignumber.js'
+import { expect } from "chai";
 
+import { delay } from "../helpers/waiter"
 
 require('dotenv').config();
 export enum FeeAmount {
@@ -17,10 +20,6 @@ let fromEther = ethers.utils.parseEther
 let toEther = ethers.utils.formatEther
 
 let SOL_ADDRESS = process.env.SOL_ADDRESS || "";
-
-function delay(ms: number) {
-    return new Promise( resolve => setTimeout(resolve, ms) );
-}
 
 async function fixture() {
   let [deployer] = await ethers.getSigners();
@@ -298,7 +297,11 @@ async function main() {
     "tx": increaseReceipt["transactionHash"]
   });
 
+  // Withdraw liquidity position
   console.log("NonfungiblePositionManager - Decrease Liquidity");
+  const poolLiquidityBeforeWithdrawal: number = await pool.liquidity();
+  console.log("Total liquidity in the pool before withdrawal:", toEther(poolLiquidityBeforeWithdrawal));
+  
   let positions = await positionManager.positions(tokenId);
   const decreaseParams = {
       tokenId: tokenId,
@@ -314,6 +317,10 @@ async function main() {
   updatedLiquidity = await pool.liquidity();
   console.log("Updated Liquidity: ", toEther(updatedLiquidity));
 
+  const poolLiquidityAfterWithdrawal = await pool.liquidity()
+  console.log("Total liquidity in the pool after withdrawal:", toEther(poolLiquidityAfterWithdrawal));
+  expect(poolLiquidityAfterWithdrawal).to.lt(poolLiquidityBeforeWithdrawal);
+  
   report["actions"].push({
     "name": "NonfungiblePositionManager - Decrease Liquidity",
     "usedGas": decreaseReceipt["gasUsed"].toString(),
@@ -321,9 +328,16 @@ async function main() {
     "tx": decreaseReceipt["transactionHash"]
   });
 
+  // Collect fees
   console.log("NonfungiblePositionManager - Collect fees");
+  const lpToken0BalanceBeforeBCollection = await token0.balanceOf(LP.address);
+  console.log("LP user's token0 balance before collection:", toEther(lpToken0BalanceBeforeBCollection));
+  
+  const lpToken1BalanceBeforeCollection = await token1.balanceOf(LP.address);
+  console.log("LP user's token1 balance before collection:", toEther(lpToken1BalanceBeforeCollection));
+
   const collectParams = {
-    recipient: positionManager.address,
+    recipient: LP.address,
     tokenId: tokenId,
     amount0Max: fromEther("10"),
     amount1Max: fromEther("10"),
@@ -332,6 +346,14 @@ async function main() {
   const collectReceipt = await collectFeesTx.wait();
   console.log("Fees collected successfully!");
 
+  const lpToken0BalanceAfterCollection = await token0.balanceOf(LP.address);
+  console.log("LP user's token0 balance after collection:", toEther(lpToken0BalanceAfterCollection));
+  expect(lpToken0BalanceAfterCollection).to.gt(lpToken0BalanceBeforeBCollection);
+  
+  const lpToken1BalanceAfterCollection = await token1.balanceOf(LP.address);
+  console.log("LP user's token1 balance after collection:", toEther(lpToken1BalanceAfterCollection));
+  expect(lpToken1BalanceAfterCollection).to.gt(lpToken1BalanceBeforeCollection);
+
   report["actions"].push({
     "name": "NonfungiblePositionManager - Collect Fees",
     "usedGas": collectReceipt["gasUsed"].toString(),
@@ -339,6 +361,7 @@ async function main() {
     "tx": collectReceipt["transactionHash"]
   });
 
+  // Burn liquidity position
   console.log("Burn tokenId from NFT contract");
   const pmBurnTx = await positionManager.connect(LP).burn(tokenId);
   const burnReceipt = await pmBurnTx.wait();
