@@ -6,7 +6,7 @@ on:
 jobs:
   echidna:
     name: Echidna
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "k8s-prod-ubuntu-22"]
     strategy:
       fail-fast: false
       matrix:
