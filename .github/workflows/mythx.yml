@@ -6,7 +6,7 @@ on:
 jobs:
   mythx:
     name: Submit to Mythx
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "k8s-prod-ubuntu-22"]
 
     steps:
       - uses: actions/checkout@v2
