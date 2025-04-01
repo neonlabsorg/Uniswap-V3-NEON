@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 
 import { ethers } from "hardhat";
-import {BigNumber, BigNumberish, utils} from 'ethers'
+import { BigNumber, BigNumberish, utils } from 'ethers'
 import bn from 'bignumber.js'
 import { expect } from "chai";
 
@@ -24,26 +24,34 @@ let SOL_ADDRESS = process.env.SOL_ADDRESS || "";
 async function fixture() {
   let [deployer] = await ethers.getSigners();
 
-  const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
+  const ERC20ForSplFactory = await ethers.getContractFactory("contracts/external/neon-contracts/contracts/token/ERC20ForSpl/erc20_for_spl_factory.sol:ERC20ForSplFactory");
+  const erc20ForSplFactoryInstance = await ERC20ForSplFactory.deploy();
+  await erc20ForSplFactoryInstance.deployTransaction.wait(5);
+
+  const ERC20 = await ethers.getContractFactory("contracts/external/neon-contracts/contracts/token/ERC20ForSpl/erc20_for_spl.sol:ERC20ForSplMintable");
 
   console.log("Deploy tokenA")
-  const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await ERC20.deploy(fromEther('10000'))
-  await tokenA.deployTransaction.wait(1)
+  const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "TTA", 9, deployer.address)
+  const receiptA = await tokenA.wait(1)
+  tokenA.address = receiptA.logs[0].address
   console.log("Token address ", tokenA.address)
 
   console.log("Deploy tokenB")
-  const tokenB = await ERC20.deploy(fromEther('10000'))
-  await tokenB.deployTransaction.wait(1)
+  const tokenB = await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "TTB", 9, deployer.address)
+  const receiptB = await tokenB.wait(1)
+  tokenB.address = receiptB.logs[0].address
   console.log("Token address ", tokenB.address)
 
   console.log("Deploy tokenC")
-  const tokenC = await ERC20.deploy(fromEther('10000'))
-  await tokenC.deployTransaction.wait(1)
+  const tokenC = await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "TTC", 9, deployer.address)
+  const receiptC = await tokenC.wait(1)
+  tokenC.address = receiptC.logs[0].address
   console.log("Token address ", tokenC.address)
 
   console.log("Deploy WETH")
-  const WETH = await ERC20.deploy(fromEther('10000'))
-  await WETH.deployTransaction.wait(5)
+  const WETH = await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "WETH", 9, deployer.address)
+  const receiptWETH = await WETH.wait(1)
+  WETH.address = receiptWETH.logs[0].address
 
   console.log("Deploy factoryV3")
   const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
@@ -68,7 +76,7 @@ async function fixture() {
   console.log("Get Pool")
   const poolAddress = await factoryV3.getPool(tokenA.address, tokenB.address, FeeAmount.LOW)
   console.log("Pool 1 address ", poolAddress)
-  
+
   console.log("Get Pool")
   const poolAddress2 = await factoryV3.getPool(tokenB.address, tokenC.address, FeeAmount.LOW)
   console.log("Pool 2 address ", poolAddress2)
@@ -98,27 +106,27 @@ async function fixture() {
 
   console.log("Deploy NftPositionDescriptor")
   const NonfungibleTokenPositionDescriptor = await ethers.getContractFactory("NonfungibleTokenPositionDescriptor",
-      {
-        libraries: {
-          NFTDescriptor: nftDescriptor.address,
-        }
-      });
+    {
+      libraries: {
+        NFTDescriptor: nftDescriptor.address,
+      }
+    });
   const positionDescriptor = await NonfungibleTokenPositionDescriptor
-      .deploy(WETH.address, utils.keccak256(new TextEncoder().encode("ETH")));
+    .deploy(WETH.address, utils.keccak256(new TextEncoder().encode("ETH")));
   await positionDescriptor.deployTransaction.wait(5);
   console.log("PositionDescriptor address: ", positionDescriptor.address)
 
   console.log("Deploy NftPositionManager")
   const NonfungiblePositionManagerFactory = await ethers.getContractFactory("NonfungiblePositionManager");
   const positionManager = await NonfungiblePositionManagerFactory
-      .deploy(factoryV3.address, WETH.address, positionDescriptor.address);
+    .deploy(factoryV3.address, WETH.address, positionDescriptor.address);
   await positionManager.deployTransaction.wait(5);
   console.log("NonfungiblePositionManager address: ", positionManager.address);
 
-  return {router: router, pool: pool, pool2: pool2, positionManager: positionManager};
+  return { router: router, pool: pool, pool2: pool2, positionManager: positionManager };
 }
 
-type ReportItem = {[key: string]: string|number}
+type ReportItem = { [key: string]: string | number }
 
 bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 })
 
@@ -134,6 +142,7 @@ export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish):
 }
 
 async function main() {
+  let [deployer] = await ethers.getSigners();
   let report = {
     "name": "Uniswap V3",
     "actions": [] as ReportItem[]
@@ -142,29 +151,47 @@ async function main() {
   console.log("Run main")
   const gasPrice = await ethers.provider.getGasPrice()
   let tx;
-  const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
+  const ERC20 = await ethers.getContractFactory("contracts/external/neon-contracts/contracts/token/ERC20ForSpl/erc20_for_spl.sol:ERC20ForSplMintable");
+
   console.log("Get ERC20")
   console.log("GET LP, user and beneficiary")
   let [LP, user, beneficiary] = await ethers.getSigners();
-  let {router, pool, pool2, positionManager} = await fixture();
+  let { router, pool, pool2, positionManager } = await fixture();
   console.log("Get router ", router.address, pool.address)
   console.log("Token 0 ", await pool.token0())
+
   console.log("Attach token 0")
   const token0 = await ERC20.attach(await pool.token0());
-  console.log("Attach token 1")
+  console.log("Mint token 0")
+  tx = await token0.mint(deployer.address, fromEther('10000'), overrides)
+  await tx.wait(1)
   await delay(10000);
 
+  console.log("Attach token 1")
   const token1 = await ERC20.attach(await pool.token1());
   console.log(`Pair 1 token addresses: ${token0.address} ${token1.address}`)
+  console.log("Mint token 1")
+  tx = await token1.mint(deployer.address, fromEther('10000'))
+  await tx.wait(1)
+  await delay(10000);
+
+  console.log("Attach token 2_0")
+  const token2_0 = await ERC20.attach(await pool2.token0());
+  console.log("Mint token 2_0")
+  tx = await token2_0.mint(deployer.address, fromEther('10000'))
+  await tx.wait(1)
+  await delay(10000);
+
+  console.log("Attach token 2_1")
+  const token2_1 = await ERC20.attach(await pool2.token1());
+  console.log("Mint token 2_1")
+  tx = await token2_1.mint(deployer.address, fromEther('10000'))
+  await tx.wait(1)
+  await delay(10000);
 
   let token2;
 
-  await delay(5000);
-  const token2_0 = await ERC20.attach(await pool2.token0());
-  await delay(5000);
-  const token2_1 = await ERC20.attach(await pool2.token1());
-
-  if (token2_0.address === token0.address || token2_0.address === token1.address){
+  if (token2_0.address === token0.address || token2_0.address === token1.address) {
     token2 = token2_1;
   } else {
     token2 = token2_0;
@@ -209,7 +236,7 @@ async function main() {
   tx = await token1.approve(callee.address, MaxUint256)
   await tx.wait(1)
 
-  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),  fromEther('100'))
+  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), fromEther('100'))
   await tx.wait(1)
 
   console.log("LP current balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
@@ -272,13 +299,13 @@ async function main() {
 
   console.log("NonfungiblePositionManager - Increase Liquidity");
   const increaseParams = {
-      tokenId: tokenId,
-      amount0Desired: fromEther("1"),
-      amount1Desired: fromEther("1"),
-      amount0Min: 0,
-      amount1Min: 0,
-      deadline: ethers.constants.MaxUint256,
-    };
+    tokenId: tokenId,
+    amount0Desired: fromEther("1"),
+    amount1Desired: fromEther("1"),
+    amount0Min: 0,
+    amount1Min: 0,
+    deadline: ethers.constants.MaxUint256,
+  };
   console.log("Approve all tokens for LP user");
   tx = await token0.connect(LP).approve(positionManager.address, mintParams.amount0Desired);
   await tx.wait(1)
@@ -301,15 +328,15 @@ async function main() {
   console.log("NonfungiblePositionManager - Decrease Liquidity");
   const poolLiquidityBeforeWithdrawal: number = await pool.liquidity();
   console.log("Total liquidity in the pool before withdrawal:", toEther(poolLiquidityBeforeWithdrawal));
-  
+
   let positions = await positionManager.positions(tokenId);
   const decreaseParams = {
-      tokenId: tokenId,
-      liquidity: positions.liquidity,
-      amount0Min: 0,
-      amount1Min: 0,
-      deadline: ethers.constants.MaxUint256,
-    };
+    tokenId: tokenId,
+    liquidity: positions.liquidity,
+    amount0Min: 0,
+    amount1Min: 0,
+    deadline: ethers.constants.MaxUint256,
+  };
 
   const decreaseTx = await positionManager.connect(LP).decreaseLiquidity(decreaseParams);
   const decreaseReceipt = await decreaseTx.wait();
@@ -320,7 +347,7 @@ async function main() {
   const poolLiquidityAfterWithdrawal = await pool.liquidity()
   console.log("Total liquidity in the pool after withdrawal:", toEther(poolLiquidityAfterWithdrawal));
   expect(poolLiquidityAfterWithdrawal).to.lt(poolLiquidityBeforeWithdrawal);
-  
+
   report["actions"].push({
     "name": "NonfungiblePositionManager - Decrease Liquidity",
     "usedGas": decreaseReceipt["gasUsed"].toString(),
@@ -332,7 +359,7 @@ async function main() {
   console.log("NonfungiblePositionManager - Collect fees");
   const lpToken0BalanceBeforeBCollection = await token0.balanceOf(LP.address);
   console.log("LP user's token0 balance before collection:", toEther(lpToken0BalanceBeforeBCollection));
-  
+
   const lpToken1BalanceBeforeCollection = await token1.balanceOf(LP.address);
   console.log("LP user's token1 balance before collection:", toEther(lpToken1BalanceBeforeCollection));
 
@@ -349,7 +376,7 @@ async function main() {
   const lpToken0BalanceAfterCollection = await token0.balanceOf(LP.address);
   console.log("LP user's token0 balance after collection:", toEther(lpToken0BalanceAfterCollection));
   expect(lpToken0BalanceAfterCollection).to.gt(lpToken0BalanceBeforeBCollection);
-  
+
   const lpToken1BalanceAfterCollection = await token1.balanceOf(LP.address);
   console.log("LP user's token1 balance after collection:", toEther(lpToken1BalanceAfterCollection));
   expect(lpToken1BalanceAfterCollection).to.gt(lpToken1BalanceBeforeCollection);
@@ -390,7 +417,7 @@ async function main() {
   };
 
   tx = await router.connect(user).exactInputSingle(params)
- 
+
   await tx.wait(1)
   console.log("\nSwap 1");
   console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
@@ -433,7 +460,7 @@ async function main() {
   console.log("\nUser performs swaps token1 -> token0 in the pool with output amount 1 ether using router.exactOutputSingle()")
 
 
-   const params_output = {
+  const params_output = {
     tokenIn: token1.address,
     tokenOut: token0.address,
     fee: FeeAmount.LOW,
@@ -468,7 +495,7 @@ async function main() {
   console.log("\nSwap 5");
   console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
   console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  
+
   console.log("\n\nLP transfers LP tokens to beneficiary");
 
   tx = await token0.approve(callee.address, MaxUint256)
@@ -492,7 +519,7 @@ async function main() {
     "tx": burnTx["transactionHash"]
   });
 
-  tx = await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address),await token1.balanceOf(pool.address))
+  tx = await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address), await token1.balanceOf(pool.address))
   const collectTx = await tx.wait(1)
 
   report["actions"].push({
