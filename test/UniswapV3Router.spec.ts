@@ -1,6 +1,6 @@
 import { Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
-import { TestERC20 } from '../typechain/TestERC20'
+import { ERC20ForSplMintable } from '../../typechain/ERC20ForSplMintable'
 import { UniswapV3Factory } from '../typechain/UniswapV3Factory'
 import { MockTimeUniswapV3Pool } from '../typechain/MockTimeUniswapV3Pool'
 import { expect } from './shared/expect'
@@ -31,9 +31,9 @@ type ThenArg<T> = T extends PromiseLike<infer U> ? U : T
 describe('UniswapV3Pool', () => {
   let wallet: Wallet, other: Wallet
 
-  let token0: TestERC20
-  let token1: TestERC20
-  let token2: TestERC20
+  let token0: ERC20ForSplMintable
+  let token1: ERC20ForSplMintable
+  let token2: ERC20ForSplMintable
   let factory: UniswapV3Factory
   let pool0: MockTimeUniswapV3Pool
   let pool1: MockTimeUniswapV3Pool
@@ -64,8 +64,8 @@ describe('UniswapV3Pool', () => {
     const createPoolWrapped = async (
       amount: number,
       spacing: number,
-      firstToken: TestERC20,
-      secondToken: TestERC20
+      firstToken: ERC20ForSplMintable,
+      secondToken: ERC20ForSplMintable
     ): Promise<[MockTimeUniswapV3Pool, any]> => {
       const pool = await createPool(amount, spacing, firstToken, secondToken)
       const poolFunctions = createPoolFunctions({
@@ -94,8 +94,8 @@ describe('UniswapV3Pool', () => {
   })
 
   describe('multi-swaps', () => {
-    let inputToken: TestERC20
-    let outputToken: TestERC20
+    let inputToken: ERC20ForSplMintable
+    let outputToken: ERC20ForSplMintable
 
     beforeEach('initialize both pools', async () => {
       inputToken = token0

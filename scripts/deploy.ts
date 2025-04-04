@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 
 import { ethers } from "hardhat";
-import {BigNumber, BigNumberish, utils} from 'ethers'
+import { BigNumber, BigNumberish, utils } from 'ethers'
 import bn from 'bignumber.js'
 import { expect } from "chai";
 
@@ -13,37 +13,47 @@ export enum FeeAmount {
   MEDIUM = 3000,
   HIGH = 10000,
 }
+
+const InitialTokenMintAmount = ethers.utils.parseEther('1')
+const InitialCaleeTokenAmount = 1_000_000_000
+const TransferAmount = 10_000_000
+
 const overrides = { gasLimit: 1e10 }
 const MaxUint256 = ethers.constants.MaxUint256;
-
-let fromEther = ethers.utils.parseEther
-let toEther = ethers.utils.formatEther
 
 let SOL_ADDRESS = process.env.SOL_ADDRESS || "";
 
 async function fixture() {
   let [deployer] = await ethers.getSigners();
 
-  const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
+  const ERC20ForSplFactory = await ethers.getContractFactory("contracts/external/neon-contracts/contracts/token/ERC20ForSpl/erc20_for_spl_factory.sol:ERC20ForSplFactory");
+  const erc20ForSplFactoryInstance = await ERC20ForSplFactory.deploy();
+  await erc20ForSplFactoryInstance.deployTransaction.wait(5);
+
+  const ERC20 = await ethers.getContractFactory("contracts/external/neon-contracts/contracts/token/ERC20ForSpl/erc20_for_spl.sol:ERC20ForSplMintable");
 
   console.log("Deploy tokenA")
-  const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await ERC20.deploy(fromEther('10000'))
-  await tokenA.deployTransaction.wait(1)
+  const tokenA = SOL_ADDRESS ? await ERC20.attach(SOL_ADDRESS) : await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "TTA", 9, deployer.address)
+  const receiptA = await tokenA.wait(1)
+  tokenA.address = receiptA.logs[0].address
   console.log("Token address ", tokenA.address)
 
   console.log("Deploy tokenB")
-  const tokenB = await ERC20.deploy(fromEther('10000'))
-  await tokenB.deployTransaction.wait(1)
+  const tokenB = await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "TTB", 9, deployer.address)
+  const receiptB = await tokenB.wait(1)
+  tokenB.address = receiptB.logs[0].address
   console.log("Token address ", tokenB.address)
 
   console.log("Deploy tokenC")
-  const tokenC = await ERC20.deploy(fromEther('10000'))
-  await tokenC.deployTransaction.wait(1)
+  const tokenC = await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "TTC", 9, deployer.address)
+  const receiptC = await tokenC.wait(1)
+  tokenC.address = receiptC.logs[0].address
   console.log("Token address ", tokenC.address)
 
   console.log("Deploy WETH")
-  const WETH = await ERC20.deploy(fromEther('10000'))
-  await WETH.deployTransaction.wait(5)
+  const WETH = await erc20ForSplFactoryInstance.createErc20ForSplMintable("Test Token", "WETH", 9, deployer.address)
+  const receiptWETH = await WETH.wait(1)
+  WETH.address = receiptWETH.logs[0].address
 
   console.log("Deploy factoryV3")
   const UniswapV3Factory = await ethers.getContractFactory("UniswapV3Factory");
@@ -68,7 +78,7 @@ async function fixture() {
   console.log("Get Pool")
   const poolAddress = await factoryV3.getPool(tokenA.address, tokenB.address, FeeAmount.LOW)
   console.log("Pool 1 address ", poolAddress)
-  
+
   console.log("Get Pool")
   const poolAddress2 = await factoryV3.getPool(tokenB.address, tokenC.address, FeeAmount.LOW)
   console.log("Pool 2 address ", poolAddress2)
@@ -98,27 +108,27 @@ async function fixture() {
 
   console.log("Deploy NftPositionDescriptor")
   const NonfungibleTokenPositionDescriptor = await ethers.getContractFactory("NonfungibleTokenPositionDescriptor",
-      {
-        libraries: {
-          NFTDescriptor: nftDescriptor.address,
-        }
-      });
+    {
+      libraries: {
+        NFTDescriptor: nftDescriptor.address,
+      }
+    });
   const positionDescriptor = await NonfungibleTokenPositionDescriptor
-      .deploy(WETH.address, utils.keccak256(new TextEncoder().encode("ETH")));
+    .deploy(WETH.address, utils.keccak256(new TextEncoder().encode("ETH")));
   await positionDescriptor.deployTransaction.wait(5);
   console.log("PositionDescriptor address: ", positionDescriptor.address)
 
   console.log("Deploy NftPositionManager")
   const NonfungiblePositionManagerFactory = await ethers.getContractFactory("NonfungiblePositionManager");
   const positionManager = await NonfungiblePositionManagerFactory
-      .deploy(factoryV3.address, WETH.address, positionDescriptor.address);
+    .deploy(factoryV3.address, WETH.address, positionDescriptor.address);
   await positionManager.deployTransaction.wait(5);
   console.log("NonfungiblePositionManager address: ", positionManager.address);
 
-  return {router: router, pool: pool, pool2: pool2, positionManager: positionManager};
+  return { router: router, pool: pool, pool2: pool2, positionManager: positionManager };
 }
 
-type ReportItem = {[key: string]: string|number}
+type ReportItem = { [key: string]: string | number }
 
 bn.config({ EXPONENTIAL_AT: 999999, DECIMAL_PLACES: 40 })
 
@@ -134,6 +144,7 @@ export function encodePriceSqrt(reserve1: BigNumberish, reserve0: BigNumberish):
 }
 
 async function main() {
+  let [deployer] = await ethers.getSigners();
   let report = {
     "name": "Uniswap V3",
     "actions": [] as ReportItem[]
@@ -142,29 +153,47 @@ async function main() {
   console.log("Run main")
   const gasPrice = await ethers.provider.getGasPrice()
   let tx;
-  const ERC20 = await ethers.getContractFactory("contracts/v3-core/test/TestERC20.sol:TestERC20");
+  const ERC20 = await ethers.getContractFactory("contracts/external/neon-contracts/contracts/token/ERC20ForSpl/erc20_for_spl.sol:ERC20ForSplMintable");
+
   console.log("Get ERC20")
   console.log("GET LP, user and beneficiary")
   let [LP, user, beneficiary] = await ethers.getSigners();
-  let {router, pool, pool2, positionManager} = await fixture();
+  let { router, pool, pool2, positionManager } = await fixture();
   console.log("Get router ", router.address, pool.address)
   console.log("Token 0 ", await pool.token0())
+
   console.log("Attach token 0")
   const token0 = await ERC20.attach(await pool.token0());
-  console.log("Attach token 1")
+  console.log("Mint token 0")
+  tx = await token0.mint(deployer.address, InitialTokenMintAmount)
+  await tx.wait(1)
   await delay(10000);
 
+  console.log("Attach token 1")
   const token1 = await ERC20.attach(await pool.token1());
   console.log(`Pair 1 token addresses: ${token0.address} ${token1.address}`)
+  console.log("Mint token 1")
+  tx = await token1.mint(deployer.address, InitialTokenMintAmount)
+  await tx.wait(1)
+  await delay(10000);
+
+  console.log("Attach token 2_0")
+  const token2_0 = await ERC20.attach(await pool2.token0());
+  console.log("Mint token 2_0")
+  tx = await token2_0.mint(deployer.address, InitialTokenMintAmount)
+  await tx.wait(1)
+  await delay(10000);
+
+  console.log("Attach token 2_1")
+  const token2_1 = await ERC20.attach(await pool2.token1());
+  console.log("Mint token 2_1")
+  tx = await token2_1.mint(deployer.address, InitialTokenMintAmount)
+  await tx.wait(1)
+  await delay(10000);
 
   let token2;
 
-  await delay(5000);
-  const token2_0 = await ERC20.attach(await pool2.token0());
-  await delay(5000);
-  const token2_1 = await ERC20.attach(await pool2.token1());
-
-  if (token2_0.address === token0.address || token2_0.address === token1.address){
+  if (token2_0.address === token0.address || token2_0.address === token1.address) {
     token2 = token2_1;
   } else {
     token2 = token2_0;
@@ -175,21 +204,22 @@ async function main() {
 
   console.log(`Pair 2 token addresses: ${token2_0.address} ${token2_1.address}`)
 
-  tx = await token0.transfer(LP.address, fromEther('100'))
+  tx = await token0.transfer(LP.address, TransferAmount)
   await tx.wait(1)
-  tx = await token1.transfer(LP.address, fromEther('100'))
+  tx = await token1.transfer(LP.address, TransferAmount)
   await tx.wait(1)
-  tx = await token2.transfer(LP.address, fromEther('100'))
+  tx = await token2.transfer(LP.address, TransferAmount
+  )
   await tx.wait(1)
 
-  console.log("LP initial balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)), "   token2:", toEther(await token2.balanceOf(LP.address)))
+  console.log("LP initial balances token0:", await token0.balanceOf(LP.address), "   token1:", await token1.balanceOf(LP.address), "   token2:", await token2.balanceOf(LP.address))
 
   console.log("Approve all tokens for LP user");
-  tx = await token0.connect(LP).approve(router.address, MaxUint256)
+  tx = await token0.connect(LP).approve(router.address, InitialTokenMintAmount)
   await tx.wait(1)
-  tx = await token1.connect(LP).approve(router.address, MaxUint256)
+  tx = await token1.connect(LP).approve(router.address, InitialTokenMintAmount)
   await tx.wait(1)
-  tx = await token2.connect(LP).approve(router.address, MaxUint256)
+  tx = await token2.connect(LP).approve(router.address, InitialTokenMintAmount)
   await tx.wait(1)
 
   const getMinTick = (tickSpacing: number) => Math.ceil(-887272 / tickSpacing) * tickSpacing
@@ -204,32 +234,33 @@ async function main() {
   const calleeFactory = await ethers.getContractFactory('contracts/v3-core/test/TestUniswapV3Callee.sol:TestUniswapV3Callee')
   const callee = await calleeFactory.deploy()
   await callee.deployed()
-  tx = await token0.approve(callee.address, MaxUint256)
+  tx = await token0.approve(callee.address, InitialCaleeTokenAmount)
   await tx.wait(1)
-  tx = await token1.approve(callee.address, MaxUint256)
-  await tx.wait(1)
-
-  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]),  fromEther('100'))
+  tx = await token1.approve(callee.address, InitialCaleeTokenAmount)
   await tx.wait(1)
 
-  console.log("LP current balances    token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
+  console.log("Calee mint")
+  tx = await callee.mint(pool.address, LP.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), TransferAmount * 10)
+  await tx.wait(1)
 
-  tx = await token0.transfer(user.address, fromEther('10'))
+  console.log("LP current balances    token0:", await token0.balanceOf(LP.address), "   token1:", await token1.balanceOf(LP.address))
+
+  tx = await token0.transfer(user.address, TransferAmount)
   console.log(`Transfer 1 ${tx.hash}`);
   await tx.wait(1)
-  tx = await token1.transfer(user.address, fromEther('10'))
+  tx = await token1.transfer(user.address, TransferAmount)
   console.log(`Transfer 2 ${tx.hash}`);
   await tx.wait(1)
-  tx = await token2.transfer(user.address, fromEther('10'))
+  tx = await token2.transfer(user.address, TransferAmount)
   console.log(`Transfer 3 ${tx.hash}`);
   await tx.wait(1)
 
   console.log("Approve all tokens for user");
-  tx = await token0.connect(user).approve(router.address, MaxUint256)
+  tx = await token0.connect(user).approve(router.address, InitialTokenMintAmount)
   await tx.wait(1)
-  tx = await token1.connect(user).approve(router.address, MaxUint256)
+  tx = await token1.connect(user).approve(router.address, InitialTokenMintAmount)
   await tx.wait(1)
-  tx = await token2.connect(user).approve(router.address, MaxUint256)
+  tx = await token2.connect(user).approve(router.address, InitialTokenMintAmount)
   const approveReceipt = await tx.wait(5)
 
   report["actions"].push({
@@ -246,8 +277,8 @@ async function main() {
     fee: FeeAmount.LOW,
     tickLower: getMinTick(TICK_SPACINGS[FeeAmount.LOW]),
     tickUpper: getMaxTick(TICK_SPACINGS[FeeAmount.HIGH]),
-    amount0Desired: fromEther("1"),
-    amount1Desired: fromEther("1"),
+    amount0Desired: 5_000_000,
+    amount1Desired: 5_000_000,
     amount0Min: 0,
     amount1Min: 0,
     recipient: LP.address,
@@ -272,13 +303,13 @@ async function main() {
 
   console.log("NonfungiblePositionManager - Increase Liquidity");
   const increaseParams = {
-      tokenId: tokenId,
-      amount0Desired: fromEther("1"),
-      amount1Desired: fromEther("1"),
-      amount0Min: 0,
-      amount1Min: 0,
-      deadline: ethers.constants.MaxUint256,
-    };
+    tokenId: tokenId,
+    amount0Desired: 5_000_000,
+    amount1Desired: 5_000_000,
+    amount0Min: 0,
+    amount1Min: 0,
+    deadline: ethers.constants.MaxUint256,
+  };
   console.log("Approve all tokens for LP user");
   tx = await token0.connect(LP).approve(positionManager.address, mintParams.amount0Desired);
   await tx.wait(1)
@@ -288,7 +319,6 @@ async function main() {
   const increaseReceipt = await increaseTx.wait();
 
   let updatedLiquidity = await pool.liquidity();
-  console.log("Updated Liquidity: ", toEther(updatedLiquidity));
 
   report["actions"].push({
     "name": "NonfungiblePositionManager - Increase liquidity ",
@@ -300,27 +330,26 @@ async function main() {
   // Withdraw liquidity position
   console.log("NonfungiblePositionManager - Decrease Liquidity");
   const poolLiquidityBeforeWithdrawal: number = await pool.liquidity();
-  console.log("Total liquidity in the pool before withdrawal:", toEther(poolLiquidityBeforeWithdrawal));
-  
+  console.log("Total liquidity in the pool before withdrawal:", poolLiquidityBeforeWithdrawal);
   let positions = await positionManager.positions(tokenId);
   const decreaseParams = {
-      tokenId: tokenId,
-      liquidity: positions.liquidity,
-      amount0Min: 0,
-      amount1Min: 0,
-      deadline: ethers.constants.MaxUint256,
-    };
+    tokenId: tokenId,
+    liquidity: positions.liquidity,
+    amount0Min: 0,
+    amount1Min: 0,
+    deadline: ethers.constants.MaxUint256,
+  };
 
   const decreaseTx = await positionManager.connect(LP).decreaseLiquidity(decreaseParams);
   const decreaseReceipt = await decreaseTx.wait();
 
   updatedLiquidity = await pool.liquidity();
-  console.log("Updated Liquidity: ", toEther(updatedLiquidity));
+  console.log("Updated Liquidity: ", updatedLiquidity);
 
   const poolLiquidityAfterWithdrawal = await pool.liquidity()
-  console.log("Total liquidity in the pool after withdrawal:", toEther(poolLiquidityAfterWithdrawal));
+  console.log("Total liquidity in the pool after withdrawal:", poolLiquidityAfterWithdrawal);
   expect(poolLiquidityAfterWithdrawal).to.lt(poolLiquidityBeforeWithdrawal);
-  
+
   report["actions"].push({
     "name": "NonfungiblePositionManager - Decrease Liquidity",
     "usedGas": decreaseReceipt["gasUsed"].toString(),
@@ -331,27 +360,27 @@ async function main() {
   // Collect fees
   console.log("NonfungiblePositionManager - Collect fees");
   const lpToken0BalanceBeforeBCollection = await token0.balanceOf(LP.address);
-  console.log("LP user's token0 balance before collection:", toEther(lpToken0BalanceBeforeBCollection));
-  
+  console.log("LP user's token0 balance before collection:", lpToken0BalanceBeforeBCollection);
+
   const lpToken1BalanceBeforeCollection = await token1.balanceOf(LP.address);
-  console.log("LP user's token1 balance before collection:", toEther(lpToken1BalanceBeforeCollection));
+  console.log("LP user's token1 balance before collection:", lpToken1BalanceBeforeCollection);
 
   const collectParams = {
     recipient: LP.address,
     tokenId: tokenId,
-    amount0Max: fromEther("10"),
-    amount1Max: fromEther("10"),
+    amount0Max: 15_000_000,
+    amount1Max: 15_000_000,
   };
   const collectFeesTx = await positionManager.connect(LP).collect(collectParams);
   const collectReceipt = await collectFeesTx.wait();
   console.log("Fees collected successfully!");
 
   const lpToken0BalanceAfterCollection = await token0.balanceOf(LP.address);
-  console.log("LP user's token0 balance after collection:", toEther(lpToken0BalanceAfterCollection));
+  console.log("LP user's token0 balance after collection:", lpToken0BalanceAfterCollection);
   expect(lpToken0BalanceAfterCollection).to.gt(lpToken0BalanceBeforeBCollection);
-  
+
   const lpToken1BalanceAfterCollection = await token1.balanceOf(LP.address);
-  console.log("LP user's token1 balance after collection:", toEther(lpToken1BalanceAfterCollection));
+  console.log("LP user's token1 balance after collection:", lpToken1BalanceAfterCollection);
   expect(lpToken1BalanceAfterCollection).to.gt(lpToken1BalanceBeforeCollection);
 
   report["actions"].push({
@@ -374,9 +403,9 @@ async function main() {
     "tx": burnReceipt["transactionHash"]
   });
 
-  console.log("\nUser performs swaps token0 -> token1 in the pool with swap amount 1 ether using router.swapExactTokensForTokens()\n");
-  let swapAmount = fromEther("1")
-  let outputAmount = fromEther("1")
+  console.log("\nUser performs swaps token0 -> token1 in the pool with swap amount 1_000_000 tokens using router.swapExactTokensForTokens()\n");
+  let swapAmount = 1_000_000
+  let outputAmount = 1_000_000
 
   const params = {
     tokenIn: token1.address,
@@ -390,12 +419,12 @@ async function main() {
   };
 
   tx = await router.connect(user).exactInputSingle(params)
- 
+
   await tx.wait(1)
   console.log("\nSwap 1");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  tx = await router.connect(user).exactInputSingle(params)
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
+  tx = await router.connect(user).exactInputSingle(params, overrides)
   const swapReceipt = await tx.wait(1)
   console.log("Swap tx hash:", tx.hash)
 
@@ -407,33 +436,33 @@ async function main() {
   });
 
   console.log("\nSwap 2");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactInputSingle(params)
   await tx.wait(1)
   console.log("Swap tx hash:", tx.hash)
 
   console.log("\nSwap 3");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactInputSingle(params)
   await tx.wait(1)
   console.log("Swap tx hash:", tx.hash)
 
   console.log("\nSwap 4");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactInputSingle(params)
   await tx.wait(1)
   console.log("\nSwap 5");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
 
 
-  console.log("\nUser performs swaps token1 -> token0 in the pool with output amount 1 ether using router.exactOutputSingle()")
+  console.log("\nUser performs swaps token1 -> token0 in the pool with output amount 1_000_000 tokens using router.exactOutputSingle()")
 
 
-   const params_output = {
+  const params_output = {
     tokenIn: token1.address,
     tokenOut: token0.address,
     fee: FeeAmount.LOW,
@@ -446,41 +475,41 @@ async function main() {
   tx = await router.connect(user).exactOutputSingle(params_output)
   await tx.wait(1)
   console.log("\nSwap 1");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactOutputSingle(params_output)
   await tx.wait(1)
   console.log("\nSwap 2");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactOutputSingle(params_output)
   await tx.wait(1)
   console.log("\nSwap 3");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactOutputSingle(params_output)
   await tx.wait(1)
   console.log("\nSwap 4");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
   tx = await router.connect(user).exactOutputSingle(params_output)
   await tx.wait(1)
   console.log("\nSwap 5");
-  console.log("User balance    token0:", toEther(await token0.balanceOf(user.address)), "   token1:", toEther(await token1.balanceOf(user.address)))
-  console.log("Pool balance    token0:", toEther(await token0.balanceOf(pool.address)), "   token1:", toEther(await token1.balanceOf(pool.address)))
-  
+  console.log("User balance    token0:", await token0.balanceOf(user.address), "   token1:", await token1.balanceOf(user.address))
+  console.log("Pool balance    token0:", await token0.balanceOf(pool.address), "   token1:", await token1.balanceOf(pool.address))
+
   console.log("\n\nLP transfers LP tokens to beneficiary");
 
-  tx = await token0.approve(callee.address, MaxUint256)
+  tx = await token0.approve(callee.address, 100_000_000)
   await tx.wait(1)
-  tx = await token1.approve(callee.address, MaxUint256)
+  tx = await token1.approve(callee.address, 100_000_000)
   await tx.wait(1)
 
   console.log("Starting collecting rewards for the Beneficiary");
   console.log("Balances before collecting rewards")
-  console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
-  console.log("LP current balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
-  console.log("Beneficiary current balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
+  console.log("Liquidity in pool: ", await pool.liquidity())
+  console.log("LP current balances          token0:", await token0.balanceOf(LP.address)), "   token1:", await token1.balanceOf(LP.address)
+  console.log("Beneficiary current balances token0:", await token0.balanceOf(beneficiary.address)), "   token1:", await token1.balanceOf(beneficiary.address)
 
   tx = await pool.connect(LP).burn(getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), 0)
   const burnTx = await tx.wait(1)
@@ -492,7 +521,7 @@ async function main() {
     "tx": burnTx["transactionHash"]
   });
 
-  tx = await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address),await token1.balanceOf(pool.address))
+  tx = await pool.connect(LP).collect(beneficiary.address, getMinTick(TICK_SPACINGS[FeeAmount.LOW]), getMaxTick(TICK_SPACINGS[FeeAmount.LOW]), await token0.balanceOf(pool.address), await token1.balanceOf(pool.address))
   const collectTx = await tx.wait(1)
 
   report["actions"].push({
@@ -503,9 +532,9 @@ async function main() {
   });
 
   console.log("Balances after collecting rewards")
-  console.log("Liquidity in pool: ", toEther(await pool.liquidity()))
-  console.log("LP balances          token0:", toEther(await token0.balanceOf(LP.address)), "   token1:", toEther(await token1.balanceOf(LP.address)))
-  console.log("Beneficiary balances token0:", toEther(await token0.balanceOf(beneficiary.address)), "   token1:", toEther(await token1.balanceOf(beneficiary.address)))
+  console.log("Liquidity in pool: ", await pool.liquidity())
+  console.log("LP balances          token0:", await token0.balanceOf(LP.address)), "   token1:", await token1.balanceOf(LP.address)
+  console.log("Beneficiary balances token0:", await token0.balanceOf(beneficiary.address)), "   token1:", await token1.balanceOf(beneficiary.address)
 
   await fs.writeFile("report.json", JSON.stringify(report));
 }

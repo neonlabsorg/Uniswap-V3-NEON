@@ -3,7 +3,7 @@ import { BigNumber, BigNumberish, constants, Contract, ContractTransaction, util
 import { TestUniswapV3Callee } from '../../typechain/TestUniswapV3Callee'
 import { TestUniswapV3Router } from '../../typechain/TestUniswapV3Router'
 import { MockTimeUniswapV3Pool } from '../../typechain/MockTimeUniswapV3Pool'
-import { TestERC20 } from '../../typechain/TestERC20'
+import { ERC20ForSplMintable } from '../../typechain/ERC20ForSplMintable'
 
 export const MaxUint128 = BigNumber.from(2).pow(128).sub(1)
 
@@ -111,8 +111,8 @@ export function createPoolFunctions({
   pool,
 }: {
   swapTarget: TestUniswapV3Callee
-  token0: TestERC20
-  token1: TestERC20
+  token0: ERC20ForSplMintable
+  token1: ERC20ForSplMintable
   pool: MockTimeUniswapV3Pool
 }): PoolFunctions {
   async function swapToSqrtPrice(
@@ -232,7 +232,7 @@ export function createMultiPoolFunctions({
   poolInput,
   poolOutput,
 }: {
-  inputToken: TestERC20
+  inputToken: ERC20ForSplMintable
   swapTarget: TestUniswapV3Router
   poolInput: MockTimeUniswapV3Pool
   poolOutput: MockTimeUniswapV3Pool
