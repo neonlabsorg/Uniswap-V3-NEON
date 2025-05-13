@@ -8,7 +8,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm ci
 
-RUN git clone --branch "update/erc20forspl-solana-native" "https://github.com/neonevm/neon-contracts.git" ./contracts/external/neon-contracts
+RUN git clone --branch "main" "https://github.com/neonevm/neon-contracts.git" ./contracts/external/neon-contracts
 RUN npm ci --prefix ./contracts/external/neon-contracts
 
 COPY ./docker/entrypoint.sh /usr/local/bin
