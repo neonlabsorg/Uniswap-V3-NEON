@@ -6,7 +6,7 @@ on:
 jobs:
   unit-tests:
     name: Unit Tests
-    runs-on: ["self-hosted", "k8s-prod-ubuntu-22"]
+    runs-on: ["gha-runner-scale-set"]
 
     steps:
       - uses: actions/checkout@v1
